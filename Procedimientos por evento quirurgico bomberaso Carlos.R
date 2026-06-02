@@ -2,6 +2,7 @@ library(dplyr)
 library(ggplot2)
 library(lubridate)
 library(scales)
+library(svglite)
 
 # Funciones ---------------------------------------------------------------
 hacer_grafica_2 <- function(df, variable_fecha, titulo) {
@@ -39,12 +40,29 @@ hacer_grafica_2 <- function(df, variable_fecha, titulo) {
 }
 
 # Bases -------------------------------------------------------------------
+# egresos_2024 <- arrow::read_parquet(
+#   
+# ) %>% 
+#   
+# 
+# egresos_2025 <- arrow::read_parquet(
+#   
+# )
+
 egresos_2026 <- arrow:: read_parquet(
   "C:/Users/liape/Downloads/egresos_sin_thanificar_01_01_2026_a_27_05_2026.parquet"
 ) %>% 
   janitor::clean_names() %>% 
   select(clues, folio, fecha_egreso) %>% 
   mutate(origen = "egresos")
+
+# procedimientos_2024 <- arrow::read_parquet(
+#   
+# )
+# 
+# procedimientos_2025 <- arrow::read_parquet(
+#   
+# )
 
 procedimientos_2026 <- arrow::read_parquet(
   "C:/Users/liape/Downloads/procedimientos_sin_thanificar_01_01_2026_a_27_05_2026.parquet"
@@ -53,8 +71,8 @@ procedimientos_2026 <- arrow::read_parquet(
   select(clues, folio, fecha_egreso, numero_procedimiento) %>% 
   mutate(origen = "procedimientos")
 
-df_limpio <- egresos %>% 
-  left_join(procedimientos,
+df_limpio <- egresos_2026 %>% 
+  left_join(procedimientos_2026,
             by = c("clues", "folio", "fecha_egreso"),
             suffix = c("_egreso", "_procedimiento")) %>% 
   mutate(fecha_egreso = as.Date(fecha_egreso),
