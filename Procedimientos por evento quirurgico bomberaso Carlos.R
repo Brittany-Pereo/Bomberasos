@@ -26,7 +26,7 @@ hacer_grafica_2 <- function(df, variable_fecha, titulo) {
         name = "Procedimientos por evento"
       )
     ) +
-    scale_x_date(date_breaks = "1 month", date_labels = "%b") +
+    scale_x_date(date_breaks = "4 weeks", date_labels = "%d-%b- %y") +
     labs(
       x = NULL,
       color = NULL,
@@ -40,39 +40,87 @@ hacer_grafica_2 <- function(df, variable_fecha, titulo) {
 }
 
 # Bases -------------------------------------------------------------------
-# egresos_2024 <- arrow::read_parquet(
-#   
-# ) %>% 
-#   
-# 
-# egresos_2025 <- arrow::read_parquet(
-#   
-# )
+catalogo_procedimientos <- readxl::read_xlsx(
+"C:/Users/brittany.pereo/Downloads/PROCEDIMIENTO_202402 (4).xlsx"
+) %>% 
+  janitor::clean_names() %>% 
+  select(cod_cie_procedimiento = catalog_key, procedimiento_type)
+
+procedimientos_propios <- arrow::read_parquet(
+"C:/Users/brittany.pereo/IMSS-BIENESTAR/División de Procesamiento de información - Proyectos/78_transicion sistemas prod/data/proc_qx_con_ECE_2026.parquet"
+) %>% 
+  transmute(clues, folio, fecha_egreso, cod_cie_procedimiento,
+            val = "Se queda")
+
+# egresos -----------------------------------------------------------------
+egresos_2024 <- arrow::read_parquet(
+  "C:/Users/brittany.pereo/OneDrive - IMSS-BIENESTAR/Archivos de Daniel Antonio Jiménez Ángeles - 0021_procedimientos_universe/2024/egresos_2024_sin_thanificar.parquet"
+) %>% 
+  janitor::clean_names() %>% 
+  filter(eliminado == 0,
+         !is.na(eliminado)) %>% 
+  select(clues, folio, fecha_egreso, 
+         fecha_nacimiento_paciente, sexo)
+
+egresos_2025 <- arrow::read_parquet(
+  "C:/Users/brittany.pereo/OneDrive - IMSS-BIENESTAR/Archivos de Daniel Antonio Jiménez Ángeles - 0021_procedimientos_universe/2025/egresos_2025_sin_thanificar.parquet"
+)%>% 
+  janitor::clean_names() %>% 
+  filter(eliminado == 0,
+         !is.na(eliminado)) %>% 
+  select(clues, folio, fecha_egreso, 
+         fecha_nacimiento_paciente, sexo)
 
 egresos_2026 <- arrow:: read_parquet(
-  "C:/Users/liape/Downloads/egresos_sin_thanificar_01_01_2026_a_27_05_2026.parquet"
+  "C:/Users/brittany.pereo/OneDrive - IMSS-BIENESTAR/Archivos de Daniel Antonio Jiménez Ángeles - 0021_procedimientos_universe/2026/egresos_2026_sin_thanificar.parquet"
 ) %>% 
   janitor::clean_names() %>% 
-  select(clues, folio, fecha_egreso) %>% 
-  mutate(origen = "egresos")
+  filter(eliminado == 0,
+         !is.na(eliminado)) %>% 
+  select(clues, folio, fecha_egreso, 
+         fecha_nacimiento_paciente, sexo)
 
-# procedimientos_2024 <- arrow::read_parquet(
-#   
-# )
-# 
-# procedimientos_2025 <- arrow::read_parquet(
-#   
-# )
+egresos_historicos <- rbind(egresos_2024,
+                            egresos_2025,
+                            egresos_2026)
+# Procedimientos ----------------------------------------------------------
+procedimientos_2024 <- arrow::read_parquet(
+ "C:/Users/brittany.pereo/OneDrive - IMSS-BIENESTAR/Archivos de Daniel Antonio Jiménez Ángeles - 0021_procedimientos_universe/2024/procedimientos_2024_sin_thanificar.parquet"
+ )%>% 
+  janitor::clean_names() %>% 
+  select(clues, folio, fecha_egreso, numero_procedimiento, 
+         quirofano_dentro_fuera, cod_cie_procedimiento)
+
+procedimientos_2025 <- arrow::read_parquet(
+  "C:/Users/brittany.pereo/OneDrive - IMSS-BIENESTAR/Archivos de Daniel Antonio Jiménez Ángeles - 0021_procedimientos_universe/2025/procedimientos_2025_sin_thanificar.parquet"
+)%>% 
+  janitor::clean_names() %>% 
+  select(clues, folio, fecha_egreso, numero_procedimiento, 
+         quirofano_dentro_fuera, cod_cie_procedimiento)
 
 procedimientos_2026 <- arrow::read_parquet(
-  "C:/Users/liape/Downloads/procedimientos_sin_thanificar_01_01_2026_a_27_05_2026.parquet"
+  "C:\\Users\\brittany.pereo\\OneDrive - IMSS-BIENESTAR\\Archivos de Daniel Antonio Jiménez Ángeles - 0021_procedimientos_universe\\2026\\procedimientos_2026_sin_thanificar.parquet"
 ) %>% 
   janitor::clean_names() %>% 
-  select(clues, folio, fecha_egreso, numero_procedimiento) %>% 
-  mutate(origen = "procedimientos")
+  select(clues, folio, fecha_egreso, numero_procedimiento, 
+         quirofano_dentro_fuera, cod_cie_procedimiento)
 
-df_limpio <- egresos_2026 %>% 
-  left_join(procedimientos_2026,
+procedimientos_historicos <- rbind(procedimientos_2024,
+                                   procedimientos_2025,
+                                   procedimientos_2026) %>% 
+  left_join(egresos_historicos, 
+            by = c("clues", "folio", "fecha_egreso")) %>% 
+  filter(!is.na(sexo)&!is.na(fecha_nacimiento_paciente)) %>% #se van 148,855
+  left_join(catalogo_procedimientos, by = "cod_cie_procedimiento") %>% 
+  mutate(categoria = ifelse((
+    quirofano_dentro_fuera == 1& procedimiento_type %in% c("T", "D"))|procedimiento_type == "Q", 
+    1, 0)) %>% 
+  group_by(clues, folio, fecha_egreso) %>% 
+  mutate(evento = max(categoria, na.rm = TRUE)) 
+
+# FINAL -------------------------------------------------------------------
+df_limpio <- egresos_historicos %>% 
+  left_join(procedimientos_historicos,
             by = c("clues", "folio", "fecha_egreso"),
             suffix = c("_egreso", "_procedimiento")) %>% 
   mutate(fecha_egreso = as.Date(fecha_egreso),
@@ -119,14 +167,15 @@ df_grafica_1_semana <- df_limpio %>%
         semana = floor_date(fecha_egreso, "week", week_start = 1)
       ) %>% 
       count(semana, name = "numero_eventos") %>% 
-      mutate(origen = "total"))
+      mutate(origen = "total",
+             anio = year(semana)))
 
 grafica_1_por_semana <- ggplot(
   df_grafica_1_semana,
   aes(semana, numero_eventos, color = origen)) +
   geom_line(linewidth = 1.1) +
   geom_point(size = 2) +
-  scale_x_date(date_breaks = "2 weeks", date_labels = "%d-%b") +
+  scale_x_date(date_breaks = "4 weeks", date_labels = "%d-%b- %y") +
   scale_y_continuous(labels = comma) +
   labs(x = NULL, y = "Eventos", color = NULL) +
   theme_bw() +
@@ -186,7 +235,8 @@ df_grafica_2_semana <- df_grafica_2_dia %>%
     numero_eventos = sum(numero_eventos, na.rm = TRUE),
     numero_de_procedimientos = sum(numero_de_procedimientos, na.rm = TRUE),
     relacion = numero_de_procedimientos / numero_eventos,
-    .groups = "drop")
+    .groups = "drop") %>% 
+  mutate(anio = year(semana))
 
 grafica_2_por_semana <- hacer_grafica_2(
   df_grafica_2_semana,
@@ -211,7 +261,7 @@ grafica_2_por_mes
 
 # GUARDAR -----------------------------------------------------------------
 # Carpeta destino
-ruta_salida <- "C:/Users/liape/Downloads"
+ruta_salida <- "C:\\Users\\brittany.pereo\\Downloads\\ceci_codigo"
 
 # Lista de gráficas
 graficas <- list(
