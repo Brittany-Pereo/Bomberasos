@@ -831,3 +831,5 @@ resumen_por_cluster <- base_limpia %>%
 write_xlsx(resumen_por_cluster,
            "C:/Users/brittany.pereo/Downloads/faltantes.xlsx"
 )
+
+#FALTA CAMBIAR LOS NOMBRES QUE DICEN NANANANA A las eliminadas
