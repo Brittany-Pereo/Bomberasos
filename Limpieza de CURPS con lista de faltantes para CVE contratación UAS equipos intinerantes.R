@@ -126,8 +126,7 @@ base_online <- df %>%
   select(estado, clues_ancla, nombre_del_ancla, fase, turno,link_carpeta,
          curp, puesto = denominacion_de_puesto,cnpm, estatus_uas) %>% 
   filter(cnpm %in% c("PA020", "PA022", "ME001", "ME002", 
-                     "MG001", "EN005") | turno %like%"(itinerante)|(ITINERANTE)")
-
+                     "MG001", "EN005", "EN002") | turno %like%"(itinerante)|(ITINERANTE)")
 
 base_alex_original <- st_read(
   "C:/Users/brittany.pereo/IMSS-BIENESTAR/División de Procesamiento de información - Proyectos/80_Basico comunitarios dificil acceso/bases/cluster_19_rutas_geo_long.gpkg"
@@ -144,10 +143,8 @@ base_alex <-base_alex_original%>%
 clues_no_pertenecen <- base_online %>% 
   clean_names() %>% 
   distinct(clues_ancla) %>% 
-  anti_join(
-    base_alex,
-    by = c("clues_ancla" = "clues_ancla")
-  )
+  anti_join(base_alex,
+            by = c("clues_ancla" = "clues_ancla"))
 table(clues_no_pertenecen$clues_ancla%in%base_alex_original$clues_imb)
 
 base_alex_original %>% 
@@ -163,8 +160,7 @@ base_online <- base_online  %>%
     clues_ancla == "SLIMB001554" ~ "SLIMB002930",
     clues_ancla == "BSIMB000503" ~ "BSIMB000754",
     clues_ancla == "TSIMB003483" ~ "TSIMB001260",
-    TRUE ~ clues_ancla  # Mantiene el valor original si no coincide
-  ))
+    TRUE ~ clues_ancla))
 
 clues_no_pertenecen <- base_online %>% 
   clean_names() %>% 
@@ -173,39 +169,28 @@ clues_no_pertenecen <- base_online %>%
             by = "clues_ancla")
 
 base_online_1 <- base_online %>% 
-  left_join(
-    base_alex %>% distinct(clues_ancla, .keep_all = TRUE),
-    by = "clues_ancla"
-  ) %>%
-  mutate(
-    ancla_entidad = if_else(
-      is.na(ancla_entidad),
-      estado,
-      ancla_entidad
-    ),
+  left_join(base_alex %>% distinct(clues_ancla, .keep_all = TRUE),
+            by = "clues_ancla") %>%
+  mutate(ancla_entidad = if_else(
+    is.na(ancla_entidad), estado, ancla_entidad),
     nombre_cluster = if_else(
       is.na(nombre_cluster),
       "Sin match en cluster",
-      nombre_cluster
-    )
-  ) %>% 
-  group_by(
-    ancla_entidad, clues_ancla, nombre_del_ancla, fase, 
-    turno, curp, puesto, cnpm, estatus_uas, nombre_cluster
-  ) %>% 
+      nombre_cluster)) %>% 
+  group_by(ancla_entidad, clues_ancla, nombre_del_ancla, fase, 
+           turno, curp, puesto, cnpm, estatus_uas, nombre_cluster) %>% 
   mutate(n_duplicado = n()) %>% 
   ungroup() %>% 
-  mutate(
-    id_temp = interaction(
-      ancla_entidad, clues_ancla, nombre_del_ancla, curp, fase, turno,
-      puesto, cnpm, estatus_uas, nombre_cluster,
-      drop = TRUE
-    ),
-    duplicados = if_else(
-      n_duplicado > 1,
-      match(id_temp, unique(id_temp[n_duplicado > 1])),
-      0L
-    )
+  mutate(id_temp = interaction(
+    ancla_entidad, clues_ancla, nombre_del_ancla, curp, fase, turno,
+    puesto, cnpm, estatus_uas, nombre_cluster,
+    drop = TRUE
+  ),
+  duplicados = if_else(
+    n_duplicado > 1,
+    match(id_temp, unique(id_temp[n_duplicado > 1])),
+    0L
+  )
   )
 
 sin_match_cluster <- base_online_1 %>% 
@@ -235,22 +220,19 @@ base_online_1 <- base_online_1 %>%
          curp_vacia, longitud_curp,formato_curp_valido,
          estatus_validacion_curp,everything())
 
-# Base equipos itinerantes ------------------------------------------------
-vector_itinerantes <- base_online_1 %>% 
-  filter(formato_curp_valido,
-         turno %in% c("Equipo itinerante", "EQUIPO ITINERANTE")) %>% 
+vector_curps<- base_online_1 %>% 
   distinct(curp_limpia) %>% 
   pull(curp_limpia)
 
-resultado_curps_py_it <- py$consultar_curps(vector_itinerantes)
+resultado_curps_py_it <- py$consultar_curps(vector_curps)
 
-base_itinerantes <- resultado_curps_py_it$to_csv(index = FALSE) %>% 
+base_limpia <- resultado_curps_py_it$to_csv(index = FALSE) %>% 
   readr::read_csv(show_col_types = FALSE) %>% 
   select(curp_limpia = curp, apePat, apeMat, nombres) %>% 
   mutate(across(everything(), as.character))
 
-base_itinerantes <- base_online_1 %>% 
-  left_join(base_itinerantes, by = "curp_limpia")%>% 
+base_limpia <- base_online_1 %>% 
+  left_join(base_limpia, by = "curp_limpia")%>% 
   mutate(nombre = str_squish(
     paste(nombres, apePat, apeMat)),
     consulta_endpoint_exitosa = !is.na(nombres) | !is.na(apePat) | !is.na(apeMat),
@@ -260,17 +242,17 @@ base_itinerantes <- base_online_1 %>%
       TRUE ~ "CURP válida en formato, no encontrada en endpoint"))
 
 # Validacion de curps --
-tabla_validaciones <- base_itinerantes %>% 
+tabla_validaciones <- base_limpia %>% 
   count(estatus_consulta_curp, sort = TRUE)
 
-curps_invalidas <- base_itinerantes %>% 
+curps_invalidas <- base_limpia %>% 
   filter(!formato_curp_valido)
 
-curps_corregidas <- base_itinerantes %>% 
+curps_corregidas <- base_limpia %>% 
   filter(cambio_limpieza)
 
 # CURPs válidas que no regresaron nombre/apellidos en el endpoint
-sin_datos_curp <- base_itinerantes %>% 
+sin_datos_curp <- base_limpia %>% 
   filter(
     formato_curp_valido,
     is.na(nombres),
@@ -282,7 +264,7 @@ sin_datos_curp <- base_itinerantes %>%
   )
 
 # Quitar de la base principal las que no regresaron datos
-base_itinerantes <- base_itinerantes %>% 
+base_limpia <- base_limpia %>% 
   filter(
     !(
       formato_curp_valido &
@@ -290,9 +272,7 @@ base_itinerantes <- base_itinerantes %>%
         is.na(apePat) &
         is.na(apeMat)
     )
-  )
-
-base_itinerantes <- base_itinerantes %>% 
+  ) %>% 
   transmute(
     estado_ancla = ancla_entidad,
     clues_ancla,
@@ -309,7 +289,7 @@ base_itinerantes <- base_itinerantes %>%
 
 write_xlsx(
   list(
-    base_con_nombres = base_itinerantes,
+    base_con_nombres = base_limpia,
     resumen_validaciones = tabla_validaciones,
     curps_invalidas = curps_invalidas,
     curps_corregidas = curps_corregidas,
@@ -319,85 +299,8 @@ write_xlsx(
   "C:/Users/brittany.pereo/Downloads/base_eq_itinerantes.xlsx"
 )
 
-# Base equipos fase 3 -----------------------------------------------------
-vector_fase3 <- base_online_1 %>% 
-  filter(formato_curp_valido,
-         fase == 3) %>% 
-  distinct(curp_limpia) %>% 
-  pull(curp_limpia)
-
-resultado_curps_py <- py$consultar_curps(vector_fase3)
-
-base_fase3 <- resultado_curps_py$to_csv(index = FALSE) %>% 
-  readr::read_csv(show_col_types = FALSE) %>% 
-  select(curp_limpia = curp, apePat, apeMat, nombres) %>% 
-  mutate(across(everything(), as.character))
-
-base_fase3 <- base_online_1 %>% 
-  left_join(base_fase3, by = "curp_limpia") %>% 
-  mutate(nombre = str_squish(
-    paste(nombres, apePat, apeMat)),
-    consulta_endpoint_exitosa = !is.na(nombres) | !is.na(apePat) | !is.na(apeMat),
-    estatus_consulta_curp = case_when(
-      !formato_curp_valido ~ estatus_validacion_curp,
-      consulta_endpoint_exitosa ~ "CURP encontrada",
-      TRUE ~ "CURP válida en formato, no encontrada en endpoint"))
-
-# Validacion de curps --
-tabla_validaciones <- base_fase3 %>% 
-  count(estatus_consulta_curp, sort = TRUE)
-
-curps_invalidas <- base_fase3 %>% 
-  filter(!formato_curp_valido)
-
-curps_corregidas <- base_fase3 %>% 
-  filter(cambio_limpieza)
-
-# CURPs válidas que no regresaron nombre/apellidos
-sin_datos_curp <- base_fase3 %>% 
-  filter(
-    formato_curp_valido,
-    is.na(nombres),
-    is.na(apePat),
-    is.na(apeMat)
-  ) %>% 
-  mutate(
-    motivo_eliminacion = "CURP válida pero sin nombre/apellidos en endpoint"
-  )
-
-# Removerlas de la base principal
-base_fase3 <- base_fase3 %>% 
-  filter(
-    !(
-      formato_curp_valido &
-        is.na(nombres) &
-        is.na(apePat) &
-        is.na(apeMat)
-    )
-  )
-
-base_fase3 <- base_fase3 %>% 
-  transmute(estado_ancla = ancla_entidad, clues_ancla, nombre_del_ancla,
-            nombre, curp, puesto, clave_del_puesto = cnpm, estatus_uas,
-            cluster_id = nombre_cluster, enlace_a_carpeta = link_carpeta,
-            duplicados)
-
-write_xlsx(
-  list(
-    base_con_nombres = base_fase3,
-    resumen_validaciones = tabla_validaciones,
-    curps_invalidas = curps_invalidas,
-    curps_corregidas = curps_corregidas,
-    sin_datos_curp = sin_datos_curp,
-    sin_match_cluster = sin_match_cluster
-  ),
-  "C:/Users/brittany.pereo/Downloads/base_fase3.xlsx"
-)
-# -------------------------------------------------------------------------
-#EXTRAS
-# -------------------------------------------------------------------------
-# Resumen de equipos itinerantes -----------------------------------------
-base_limpia_itinerantes <- base_itinerantes %>% 
+# Resumen de base limpia -----------------------------------------
+base_limpia_final <- base_limpia %>% 
   mutate(
     puesto_arm = case_when(
       clave_del_puesto == "MG001" ~ "Medicina General",
@@ -469,10 +372,11 @@ base_limpia_itinerantes <- base_itinerantes %>%
       }
     )
   ) %>% 
-  select(-ends_with("_sobrante"))
+  select(-ends_with("_sobrante")) %>% 
+  mutate(estado_ancla = str_to_title(estado_ancla))
 
 
-resumen_team_qx <- base_limpia_itinerantes %>% 
+resumen_team_qx <- base_limpia_final %>% 
   select(
     estado_ancla,
     cluster_id,
@@ -486,9 +390,10 @@ resumen_team_qx <- base_limpia_itinerantes %>%
     puestos_faltantes
   ) %>% 
   mutate(
-    team_qx = if_else(equipo_itinerante >= 1, 1L, 0L)
+    team_qx = if_else(equipo_itinerante >= 1, 1L, 0L),
+    estado_ancla = str_to_title(estado_ancla)
   )
-base_itinerantes_final <- base_itinerantes%>% 
+base_final <- base_limpia %>% 
   left_join(
     resumen_team_qx,
     by = c("estado_ancla", "cluster_id")
@@ -517,7 +422,7 @@ base_itinerantes_final <- base_itinerantes%>%
     -Chofer
   )
 
-revision_links <- base_itinerantes_final %>% 
+revision_links <- base_final %>% 
   filter(duplicados > 0) %>% 
   distinct(duplicados, enlace_a_carpeta) %>% 
   mutate(
@@ -532,17 +437,19 @@ links_buenos <- revision_links %>%
   ungroup() %>% 
   select(duplicados, enlace_a_carpeta)
 
-base_corregida <- base_itinerantes_final%>% 
+base_corregida <- base_final%>% 
   left_join(
     links_buenos %>% 
       mutate(link_bueno = TRUE),
     by = c("duplicados", "enlace_a_carpeta")
   ) %>% 
   filter(
-    duplicados == 0 | link_bueno == TRUE
+    duplicados == 0 | link_bueno == TRUE,
+    nombre != "NA NA NA",
+    cluster_id != "Sin match en cluster"
   )
 
-duplicados_link_feo <- base_itinerantes_final %>% 
+duplicados_link_feo <- base_final %>% 
   left_join(
     links_buenos %>% 
       mutate(link_bueno = TRUE),
@@ -580,7 +487,8 @@ observaciones_eliminadas <- bind_rows(
 
 base_corregida <- base_corregida %>% 
   select(-link_bueno, -duplicados, -team_qx,
-         -puestos_faltantes, -equipo_itinerante_incompleto)
+         -puestos_faltantes, -equipo_itinerante_incompleto) %>% 
+  mutate(estado_ancla = str_to_title(estado_ancla))
 
 write_xlsx(
   list(
@@ -590,246 +498,10 @@ write_xlsx(
   "C:/Users/brittany.pereo/Downloads/equipo itinerantes completos.xlsx"
 )
 
-# Resumen de fase 3 -----------------------------------------
-base_limpia_fase3 <- base_fase3 %>% 
-  mutate(
-    puesto_arm = case_when(
-      clave_del_puesto == "MG001" ~ "Medicina General",
-      clave_del_puesto == "ME001" ~ "Anestesiologia",
-      clave_del_puesto == "ME002" ~ "Cirugia",
-      clave_del_puesto %in% c("EN002", "EN005") ~ "Enfermeria quirurgica",
-      clave_del_puesto %in% c("PA022", "PA020") ~ "Chofer",
-      TRUE ~ NA_character_
-    )
-  ) %>% 
-  filter(!is.na(puesto_arm)) %>% 
-  group_by(estado_ancla, cluster_id, puesto_arm) %>% 
-  summarise(
-    personas = n_distinct(curp),
-    .groups = "drop"
-  ) %>% 
-  pivot_wider(
-    names_from = puesto_arm,
-    values_from = personas,
-    values_fill = 0
-  ) %>% 
-  mutate(
-    equipo_itinerante = pmin(
-      Anestesiologia,
-      Cirugia,
-      `Medicina General`,
-      `Enfermeria quirurgica`,
-      Chofer,
-      na.rm = TRUE
-    ),
-    anestesiologia_sobrante = Anestesiologia - equipo_itinerante,
-    cirugia_sobrante = Cirugia - equipo_itinerante,
-    medicina_general_sobrante = `Medicina General` - equipo_itinerante,
-    enfermeria_quirurgica_sobrante = `Enfermeria quirurgica` - equipo_itinerante,
-    chofer_sobrante = Chofer - equipo_itinerante,
-    
-    equipo_itinerante_incompleto = if_else(
-      anestesiologia_sobrante +
-        cirugia_sobrante +
-        medicina_general_sobrante +
-        enfermeria_quirurgica_sobrante +
-        chofer_sobrante > 0,
-      1L,
-      0L
-    ),
-    
-    puestos_faltantes = pmap_chr(
-      list(
-        anestesiologia_sobrante,
-        cirugia_sobrante,
-        medicina_general_sobrante,
-        enfermeria_quirurgica_sobrante,
-        chofer_sobrante
-      ),
-      function(anest, cir, med, enf, chof) {
-        
-        faltan <- c(
-          if (anest < 1) "Anestesiologia",
-          if (cir < 1) "Cirugia",
-          if (med < 1) "Medicina General",
-          if (enf < 1) "Enfermeria quirurgica",
-          if (chof < 1) "Chofer"
-        )
-        
-        if (length(faltan) == 5) return("")
-        if (length(faltan) == 0) return("")
-        
-        paste(faltan, collapse = ", ")
-      }
-    )
-  ) %>% 
-  select(-ends_with("_sobrante"))
 
-resumen_team_qx <- base_limpia_fase3 %>% 
-  select(
-    estado_ancla,
-    cluster_id,
-    Anestesiologia,
-    Cirugia,
-    `Medicina General`,
-    `Enfermeria quirurgica`,
-    Chofer,
-    equipo_itinerante,
-    equipo_itinerante_incompleto,
-    puestos_faltantes
-  ) %>% 
-  mutate(
-    team_qx = if_else(equipo_itinerante >= 1, 1L, 0L)
-  )
-base_fase3_final <- base_fase3%>% 
-  left_join(
-    resumen_team_qx,
-    by = c("estado_ancla", "cluster_id")
-  ) %>% 
-  mutate(
-    across(
-      c(
-        Anestesiologia,
-        Cirugia,
-        `Medicina General`,
-        `Enfermeria quirurgica`,
-        Chofer,
-        equipo_itinerante,
-        equipo_itinerante_incompleto,
-        team_qx
-      ),
-      ~ replace_na(.x, 0)
-    ),
-    puestos_faltantes = replace_na(puestos_faltantes, "")
-  ) %>% 
-  select(
-    -Anestesiologia,
-    -Cirugia,
-    -`Medicina General`,
-    -`Enfermeria quirurgica`,
-    -Chofer
-  )
+# EXTRAS ------------------------------------------------------------------
+chiapas_puebla <- base_corregida %>% 
+  filter(estado_ancla %in% c("Chiapas", "Puebla"))
 
-revision_links <- base_fase3_final %>% 
-  filter(duplicados > 0) %>% 
-  distinct(duplicados, enlace_a_carpeta) %>% 
-  mutate(
-    revision = map(enlace_a_carpeta, probar_link)
-  ) %>% 
-  unnest(revision)
-
-links_buenos <- revision_links %>% 
-  filter(funciona) %>% 
-  group_by(duplicados) %>% 
-  slice(1) %>% 
-  ungroup() %>% 
-  select(duplicados, enlace_a_carpeta)
-
-base_corregida <- base_fase3_final%>% 
-  left_join(
-    links_buenos %>% 
-      mutate(link_bueno = TRUE),
-    by = c("duplicados", "enlace_a_carpeta")
-  ) %>% 
-  filter(
-    duplicados == 0 | link_bueno == TRUE
-  )
-
-duplicados_link_feo <- base_fase3_final %>% 
-  left_join(
-    links_buenos %>% 
-      mutate(link_bueno = TRUE),
-    by = c("duplicados", "enlace_a_carpeta")
-  ) %>% 
-  filter(
-    duplicados > 0,
-    is.na(link_bueno)
-  ) %>% 
-  mutate(
-    motivo_eliminacion = "Duplicado eliminado porque el link no abre"
-  ) %>% 
-  select(-link_bueno)
-
-observaciones_eliminadas_filtros <- base_online %>% 
-  anti_join(
-    base_corregida %>% 
-      distinct(curp, clues_ancla, clave_del_puesto),
-    by = c(
-      "curp",
-      "clues_ancla",
-      "cnpm" = "clave_del_puesto"
-    )
-  ) %>% 
-  mutate(
-    motivo_eliminacion = case_when(
-      !clues_ancla %in% base_alex$clues_imb ~ "CLUES no pertenece a base_alex / no es ancla",
-      TRUE ~ "Se eliminó en filtros posteriores"
-    )
-  )
-
-observaciones_eliminadas <- bind_rows(
-  observaciones_eliminadas_filtros,
-  duplicados_link_feo)
-
-base_corregida <- base_corregida %>% 
-  select(-link_bueno, -duplicados, -team_qx,
-         -puestos_faltantes, -equipo_itinerante_incompleto)
-
-write_xlsx(
-  list(
-    base_corregida = base_corregida,
-    observaciones_eliminadas = observaciones_eliminadas
-  ),
-  "C:/Users/brittany.pereo/Downloads/equipo fase 3 completos.xlsx"
-)
-
-# Resumen por entidad y cluster -------------------------------------------
-catalogo_clues <- arrow::read_parquet(
-  "C:/Users/brittany.pereo/OneDrive - IMSS-BIENESTAR/División de Procesamiento de información - Repositorio de Datos/CLUES/clues.parquet"
-)
-resumen_por_cluster <- base_limpia %>% 
-  mutate(
-    arma_team_qx = if_else(
-      equipo_itinerante >= 1,
-      "Sí arma team QX",
-      "No arma team QX"
-    ),
-    clues_ancla = stringr::str_remove(cluster_id, "_\\d+$")
-  ) %>% 
-  left_join(
-    catalogo_clues%>% 
-      select(
-        clues_ancla = clues_imb,
-        nombre_del_ancla = nombre_comercial
-      ) %>% 
-      distinct(),
-    by = "clues_ancla") %>% 
-  filter(arma_team_qx == "No arma team QX") %>% 
-  
-  select(
-    entidad = estado_ancla,
-    nombre_cluster = cluster_id,
-    clues_ancla,
-    hospital_ancla = nombre_del_ancla,
-    anestesiologia = Anestesiologia,
-    cirugia = Cirugia,
-    medicina_general = `Medicina General`,
-    enfermeria_quirurgica = `Enfermeria quirurgica`,
-    chofer = Chofer,
-    equipos_qx_armados = equipo_itinerante,
-    arma_team_qx,
-    puestos_faltantes
-  ) %>% 
-  
-  distinct() %>% 
-  
-  arrange(
-    entidad,
-    nombre_cluster
-  )
-
-write_xlsx(resumen_por_cluster,
-           "C:/Users/brittany.pereo/Downloads/faltantes.xlsx"
-)
-
-#FALTA CAMBIAR LOS NOMBRES QUE DICEN NANANANA A las eliminadas
+writexl::write_xlsx(chiapas_puebla,
+                    "C:/Users/brittany.pereo/Downloads/chiapas y puebla.xlsx")
