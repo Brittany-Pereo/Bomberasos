@@ -71,20 +71,56 @@ probar_link <- function(url) {
     )
   })
 }
-# Catálogo de puestos -----------------------------------------------------
+# Catálogo -----------------------------------------------------
 catalogo_puestos <- read_xlsx(
-  "C:/Users/brittany.pereo/OneDrive - IMSS-BIENESTAR/División de Procesamiento de información - Repositorio de Datos/Plantilla/catalogos/Catalogo_CNPM_2026_F.xlsx"
+"C:/Users/Cecilia Pereo/IMSS-BIENESTAR/División de Procesamiento de información - Repositorio de Datos/Plantilla/catalogos/Catalogo_CNPM_2026_F.xlsx"
 ) %>% 
   clean_names() %>% 
   select(cnpm = codigo_cnpm_26,
          denominacion_de_puesto)
 
-hbc <- read_xlsx("C:/Users/brittany.pereo/IMSS-BIENESTAR/División de Procesamiento de información - Proyectos/80_Basico comunitarios dificil acceso/bases/bases_clusters_viejas/cluster_19_carlos_long_simple.xlsx"
+hbc <- read_xlsx(
+  "C:/Users/Cecilia Pereo/IMSS-BIENESTAR/División de Procesamiento de información - Proyectos/80_Basico comunitarios dificil acceso/bases/bases_clusters_viejas/cluster_19_carlos_long_simple.xlsx"
 )
 
 vector_ancla_cluster <- c(hbc$clues_imb, substr(hbc$nombre_cluster,1,11)) |> unique()
 vector_ancla_cluster <- vector_ancla_cluster[!is.na(vector_ancla_cluster)]
 
+team_completos <- base_eq_completos <- readxl::read_xlsx(
+  "C:/Users/Cecilia Pereo/Downloads/equipo itinerantes 23062026.xlsx"
+) %>% 
+  clean_names() %>% 
+  mutate(
+    curp_limpia = curp %>% 
+      as.character() %>% 
+      str_replace_all("['\"`´“”‘’]", "") %>% 
+      str_replace_all("\\s+", "") %>% 
+      str_trim() %>% 
+      str_to_upper()
+  ) %>% 
+  distinct(curp_limpia, .keep_all = TRUE) %>% 
+  transmute(
+    curp_limpia,
+    aparece_en_team_completos = TRUE,
+    nombre_team = nombre,
+    estado_team = estado_ancla,
+    clues_ancla_team = clues_ancla,
+    nombre_del_ancla_team = nombre_del_ancla,
+    puesto_team = puesto,
+    clave_del_puesto_team = clave_del_puesto,
+    cluster_id_team = cluster_id,
+    enlace_a_carpeta_team = enlace_a_carpeta
+  )
+
+base_curps_limpios <- readxl::read_xlsx(
+"C:/Users/Cecilia Pereo/Downloads/equipo itinerantes completos.xlsx"
+) %>% 
+  select(curp, nombre) %>% 
+  filter(!is.na(nombre))
+
+base_alex_original <- st_read(
+  "C:/Users/Cecilia Pereo/IMSS-BIENESTAR/División de Procesamiento de información - Proyectos/80_Basico comunitarios dificil acceso/bases/cluster_19_rutas_geo_long.gpkg"
+) 
 # Google Sheets -----------------------------------------------------------
 gs4_deauth()
 gs4_auth(
@@ -98,12 +134,32 @@ df <- read_sheet(ss = url,
   clean_names()
 # Base madre --------------------------------------------------------------
 base_online <- df %>% 
-  filter(turno %like%"(itinerante)|(ITINERANTE)" | 
-           (fase==3 &  clues%in%vector_ancla_cluster)) %>%
-  transmute(estado, fase, turno, clues_ancla = clues,
-            nombre_del_ancla = unidad_medica, curp, 
-            puesto = clave_puesto,cnpm, estatus_uas = revision_uas,
-            link_carpeta) %>% 
+  mutate(
+    curp_limpia = curp %>% 
+      as.character() %>% 
+      str_replace_all("['\"`´“”‘’]", "") %>% 
+      str_replace_all("\\s+", "") %>% 
+      str_trim() %>% 
+      str_to_upper()
+  ) %>% 
+  left_join(team_completos, by = "curp_limpia") %>% 
+  mutate(
+    aparece_en_team_completos = replace_na(aparece_en_team_completos, FALSE)
+  ) %>% 
+  filter(
+    turno %like% "(itinerante)|(ITINERANTE)" |
+      (fase == 3 & clues %in% vector_ancla_cluster) |
+      aparece_en_team_completos
+  ) %>% 
+  mutate(
+    estado = if_else(aparece_en_team_completos, estado_team, estado),
+    clues_ancla = if_else(aparece_en_team_completos, clues_ancla_team, clues),
+    nombre_del_ancla = if_else(aparece_en_team_completos, nombre_del_ancla_team, unidad_medica),
+    cnpm = if_else(aparece_en_team_completos, clave_del_puesto_team, cnpm),
+    puesto = if_else(aparece_en_team_completos, puesto_team, clave_puesto),
+    link_carpeta = if_else(aparece_en_team_completos, enlace_a_carpeta_team, link_carpeta),
+    estatus_uas = revision_uas
+  ) %>%
   mutate(
     cnpm = case_when(
       puesto == "ME002 CIRUGIA GENERAL" ~ "ME002",
@@ -120,17 +176,30 @@ base_online <- df %>%
       puesto == "MEDICINA GENERAL" ~ "MG001",
       cnpm == "OP057" ~ "PA020",
       cnpm == "OP065" ~ "PA022",
-      TRUE ~ cnpm),
-    cnpm = if_else(is.na(cnpm), puesto, cnpm)) %>% 
+      TRUE ~ cnpm
+    ),
+    cnpm = if_else(is.na(cnpm), puesto, cnpm)
+  ) %>% 
   left_join(catalogo_puestos, by = "cnpm") %>% 
-  select(estado, clues_ancla, nombre_del_ancla, fase, turno,link_carpeta,
-         curp, puesto = denominacion_de_puesto,cnpm, estatus_uas) %>% 
-  filter(cnpm %in% c("PA020", "PA022", "ME001", "ME002", 
-                     "MG001", "EN005", "EN002") | turno %like%"(itinerante)|(ITINERANTE)")
-
-base_alex_original <- st_read(
-  "C:/Users/brittany.pereo/IMSS-BIENESTAR/División de Procesamiento de información - Proyectos/80_Basico comunitarios dificil acceso/bases/cluster_19_rutas_geo_long.gpkg"
-) 
+  mutate(
+    puesto_final = coalesce(denominacion_de_puesto, puesto)
+  ) %>% 
+  select(
+    estado,
+    clues_ancla,
+    nombre_del_ancla,
+    fase,
+    turno,
+    link_carpeta,
+    curp,
+    puesto = puesto_final,
+    cnpm,
+    estatus_uas,
+    viene_de_team_completos = aparece_en_team_completos
+  ) %>% 
+  filter(
+    cnpm %in% c("PA020", "PA022", "ME001", "ME002", "MG001", "EN005", "EN002") 
+  )
 
 base_alex <-base_alex_original%>% 
   clean_names() %>% 
@@ -196,6 +265,23 @@ base_online_1 <- base_online %>%
 sin_match_cluster <- base_online_1 %>% 
   filter(nombre_cluster == "Sin match en cluster")
 
+base_curps_limpios_join <- base_curps_limpios %>% 
+  mutate(
+    curp_limpia = curp %>% 
+      as.character() %>% 
+      str_replace_all("['\"`´“”‘’]", "") %>% 
+      str_replace_all("\\s+", "") %>% 
+      str_replace_all("[[:cntrl:]]", "") %>% 
+      str_trim() %>% 
+      str_to_upper()
+  ) %>% 
+  filter(!is.na(curp_limpia), curp_limpia != "") %>% 
+  distinct(curp_limpia, .keep_all = TRUE) %>% 
+  transmute(
+    curp_limpia,
+    nombre_base = nombre
+  )
+
 base_online_1 <- base_online_1 %>% 
   mutate(
     curp_original = curp,
@@ -215,32 +301,62 @@ base_online_1 <- base_online_1 %>%
       longitud_curp != 18 ~ "Longitud distinta de 18",
       !formato_curp_valido ~ "Formato inválido",
       cambio_limpieza ~ "CURP corregida por limpieza",
-      TRUE ~ "CURP válida sin cambios")) %>% 
-  select(curp_original, curp_limpia, cambio_limpieza,
-         curp_vacia, longitud_curp,formato_curp_valido,
-         estatus_validacion_curp,everything())
+      TRUE ~ "CURP válida sin cambios"
+    )
+  ) %>% 
+  left_join(base_curps_limpios_join, by = "curp_limpia") %>% 
+  mutate(
+    nombre = nombre_base,
+    nombre_recuperado_base_previa = !is.na(nombre_base) & nombre_base != ""
+  ) %>% 
+  select(
+    curp_original, curp_limpia, nombre, nombre_recuperado_base_previa,
+    cambio_limpieza, curp_vacia, longitud_curp,
+    formato_curp_valido, estatus_validacion_curp,
+    everything(),
+    -nombre_base
+  )
 
-vector_curps<- base_online_1 %>% 
+vector_curps <- base_online_1 %>% 
+  filter(is.na(nombre) | nombre == "" | nombre == "NA NA NA") %>% 
+  filter(formato_curp_valido) %>% 
   distinct(curp_limpia) %>% 
   pull(curp_limpia)
 
 resultado_curps_py_it <- py$consultar_curps(vector_curps)
 
-base_limpia <- resultado_curps_py_it$to_csv(index = FALSE) %>% 
-  readr::read_csv(show_col_types = FALSE) %>% 
-  select(curp_limpia = curp, apePat, apeMat, nombres) %>% 
-  mutate(across(everything(), as.character))
+base_limpia_endpoint <- resultado_curps_py_it %>% 
+  as_tibble()
+
+if (!"apePat" %in% names(base_limpia_endpoint)) base_limpia_endpoint$apePat <- NA_character_
+if (!"apeMat" %in% names(base_limpia_endpoint)) base_limpia_endpoint$apeMat <- NA_character_
+if (!"nombres" %in% names(base_limpia_endpoint)) base_limpia_endpoint$nombres <- NA_character_
+if (!"error" %in% names(base_limpia_endpoint)) base_limpia_endpoint$error <- NA_character_
+
+base_limpia_endpoint <- base_limpia_endpoint %>% 
+  transmute(
+    curp_limpia = as.character(curp),
+    apePat = as.character(apePat),
+    apeMat = as.character(apeMat),
+    nombres = as.character(nombres),
+    nombre_endpoint = str_squish(paste(nombres, apePat, apeMat)),
+    nombre_endpoint = na_if(nombre_endpoint, "NA NA NA"),
+    error_endpoint = as.character(error)
+  )
 
 base_limpia <- base_online_1 %>% 
-  left_join(base_limpia, by = "curp_limpia")%>% 
-  mutate(nombre = str_squish(
-    paste(nombres, apePat, apeMat)),
+  left_join(base_limpia_endpoint, by = "curp_limpia") %>% 
+  mutate(
+    nombre = coalesce(nombre, nombre_endpoint),
     consulta_endpoint_exitosa = !is.na(nombres) | !is.na(apePat) | !is.na(apeMat),
     estatus_consulta_curp = case_when(
       !formato_curp_valido ~ estatus_validacion_curp,
-      consulta_endpoint_exitosa ~ "CURP encontrada",
-      TRUE ~ "CURP válida en formato, no encontrada en endpoint"))
-
+      nombre_recuperado_base_previa ~ "Nombre recuperado de base previa",
+      consulta_endpoint_exitosa ~ "CURP encontrada en endpoint",
+      TRUE ~ "CURP válida en formato, no encontrada en endpoint"
+    )
+  ) %>% 
+  select(-nombre_endpoint)
 # Validacion de curps --
 tabla_validaciones <- base_limpia %>% 
   count(estatus_consulta_curp, sort = TRUE)
@@ -257,7 +373,8 @@ sin_datos_curp <- base_limpia %>%
     formato_curp_valido,
     is.na(nombres),
     is.na(apePat),
-    is.na(apeMat)
+    is.na(apeMat),
+    is.na(nombre)
   ) %>% 
   mutate(
     motivo_eliminacion = "CURP válida pero sin nombre/apellidos en endpoint"
@@ -270,7 +387,8 @@ base_limpia <- base_limpia %>%
       formato_curp_valido &
         is.na(nombres) &
         is.na(apePat) &
-        is.na(apeMat)
+        is.na(apeMat) &
+        is.na(nombre)
     )
   ) %>% 
   transmute(
@@ -296,7 +414,7 @@ write_xlsx(
     sin_datos_curp = sin_datos_curp,
     sin_match_cluster = sin_match_cluster
   ),
-  "C:/Users/brittany.pereo/Downloads/base_eq_itinerantes.xlsx"
+  "C:/Users/Cecilia Pereo/Downloads/base_eq_itinerantes.xlsx"
 )
 
 # Resumen de base limpia -----------------------------------------
@@ -328,7 +446,6 @@ base_limpia_final <- base_limpia %>%
       Cirugia,
       `Medicina General`,
       `Enfermeria quirurgica`,
-      Chofer,
       na.rm = TRUE
     ),
     anestesiologia_sobrante = Anestesiologia - equipo_itinerante,
@@ -390,13 +507,27 @@ resumen_team_qx <- base_limpia_final %>%
     puestos_faltantes
   ) %>% 
   mutate(
-    team_qx = if_else(equipo_itinerante >= 1, 1L, 0L),
+    team_qx = equipo_itinerante,
     estado_ancla = str_to_title(estado_ancla)
   )
+
+
 base_final <- base_limpia %>% 
+  select(-any_of(c(
+    "Anestesiologia",
+    "Cirugia",
+    "Medicina General",
+    "Enfermeria quirurgica",
+    "Chofer",
+    "equipo_itinerante",
+    "equipo_itinerante_incompleto",
+    "team_qx",
+    "puestos_faltantes"
+  ))) %>% 
   left_join(
-    resumen_team_qx,
-    by = c("estado_ancla", "cluster_id")
+    resumen_team_qx %>% 
+      select(-estado_ancla),
+    by = "cluster_id"
   ) %>% 
   mutate(
     across(
@@ -414,13 +545,7 @@ base_final <- base_limpia %>%
     ),
     puestos_faltantes = replace_na(puestos_faltantes, "")
   ) %>% 
-  select(
-    -Anestesiologia,
-    -Cirugia,
-    -`Medicina General`,
-    -`Enfermeria quirurgica`,
-    -Chofer
-  )
+  distinct_all()
 
 revision_links <- base_final %>% 
   filter(duplicados > 0) %>% 
@@ -492,16 +617,9 @@ base_corregida <- base_corregida %>%
 
 write_xlsx(
   list(
-    base_corregida = base_corregida,
+    base_limpia = base_corregida,
     observaciones_eliminadas = observaciones_eliminadas
   ),
-  "C:/Users/brittany.pereo/Downloads/equipo itinerantes completos.xlsx"
+  "C:/Users/Cecilia Pereo/Downloads/equipo itinerantes completos.xlsx"
 )
 
-
-# EXTRAS ------------------------------------------------------------------
-chiapas_puebla <- base_corregida %>% 
-  filter(estado_ancla %in% c("Chiapas", "Puebla"))
-
-writexl::write_xlsx(chiapas_puebla,
-                    "C:/Users/brittany.pereo/Downloads/chiapas y puebla.xlsx")
