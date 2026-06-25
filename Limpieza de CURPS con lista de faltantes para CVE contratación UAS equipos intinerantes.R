@@ -105,7 +105,7 @@ team_completos <- base_eq_completos <- readxl::read_xlsx(
   )
 
 base_curps_limpios <- readxl::read_xlsx(
-  "C:/Users/brittany.pereo/Downloads/equipo itinerantes completos.xlsx"
+  "C:/Users/brittany.pereo/Downloads/casos nuevos.xlsx"
 ) %>%
   select(curp, nombre) %>%
   filter(!is.na(nombre))
