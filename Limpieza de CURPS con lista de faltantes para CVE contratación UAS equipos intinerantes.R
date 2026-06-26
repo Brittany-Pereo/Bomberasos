@@ -80,7 +80,7 @@ catalogo_puestos <- read_xlsx(
          denominacion_de_puesto)
 
 hbc <- read_xlsx(
-"C:/Users/brittany.pereo/IMSS-BIENESTAR/División de Procesamiento de información - Proyectos/80_Basico comunitarios dificil acceso/bases/bases_clusters_viejas/cluster_19_carlos_long_simple.xlsx"
+  "C:/Users/brittany.pereo/IMSS-BIENESTAR/División de Procesamiento de información - Proyectos/80_Basico comunitarios dificil acceso/bases/bases_clusters_viejas/cluster_19_carlos_long_simple.xlsx"
 )
 
 vector_ancla_cluster <- c(hbc$clues_imb, substr(hbc$nombre_cluster,1,11)) |> unique()
@@ -111,7 +111,7 @@ base_curps_limpios <- readxl::read_xlsx(
   filter(!is.na(nombre))
 
 base_alex_original <- st_read(
-"C:/Users/brittany.pereo/IMSS-BIENESTAR/División de Procesamiento de información - Proyectos/80_Basico comunitarios dificil acceso/bases/cluster_19_rutas_geo.gpkg"
+  "C:/Users/brittany.pereo/IMSS-BIENESTAR/División de Procesamiento de información - Proyectos/80_Basico comunitarios dificil acceso/bases/cluster_19_rutas_geo.gpkg"
 ) 
 # Google Sheets -----------------------------------------------------------
 gs4_deauth()
@@ -144,23 +144,23 @@ base_online <- df %>%
       (fase == 3 & clues %in% vector_ancla_cluster) 
   ) %>% 
   mutate(cnpm = case_when(
-      clave_puesto == "ME002 CIRUGIA GENERAL" ~ "ME002",
-      clave_puesto == "OP057 CHOFER PROMOTOR POLIVALENTE" ~ "PA020",
-      clave_puesto == "MG001 MEDICINA GENERAL" ~ "MG001",
-      clave_puesto == "OP065 AUXILIAR ADMINISTRATIVO (CHOFER)" ~ "PA022",
-      clave_puesto == "EN005 ENFERMERA ESPECIALISTA CIRUGIA" ~ "EN005",
-      clave_puesto == "CHOFER PROMOTOR POLIVALENTE" ~ "PA020",
-      clave_puesto == "CHOFER POLIVALENTE" ~ "PA022",
-      clave_puesto == "AUXILIAR ADMINISTRATIVO (CHOFER)" ~ "PA022",
-      clave_puesto == "CIRUGIA GENERAL" ~ "ME002",
-      clave_puesto == "ANESTESIOLOGIA" ~ "ME001",
-      clave_puesto == "ENFERMERA ESPECIALISTA CIRUGIA" ~ "EN005",
-      clave_puesto == "MEDICINA GENERAL" ~ "MG001",
-      cnpm == "OP057" ~ "PA020",
-      cnpm == "OP065" ~ "PA022",
-      TRUE ~ cnpm),
-      cnpm = if_else(is.na(cnpm), clave_puesto, cnpm)
-    ) %>% 
+    clave_puesto == "ME002 CIRUGIA GENERAL" ~ "ME002",
+    clave_puesto == "OP057 CHOFER PROMOTOR POLIVALENTE" ~ "PA020",
+    clave_puesto == "MG001 MEDICINA GENERAL" ~ "MG001",
+    clave_puesto == "OP065 AUXILIAR ADMINISTRATIVO (CHOFER)" ~ "PA022",
+    clave_puesto == "EN005 ENFERMERA ESPECIALISTA CIRUGIA" ~ "EN005",
+    clave_puesto == "CHOFER PROMOTOR POLIVALENTE" ~ "PA020",
+    clave_puesto == "CHOFER POLIVALENTE" ~ "PA022",
+    clave_puesto == "AUXILIAR ADMINISTRATIVO (CHOFER)" ~ "PA022",
+    clave_puesto == "CIRUGIA GENERAL" ~ "ME002",
+    clave_puesto == "ANESTESIOLOGIA" ~ "ME001",
+    clave_puesto == "ENFERMERA ESPECIALISTA CIRUGIA" ~ "EN005",
+    clave_puesto == "MEDICINA GENERAL" ~ "MG001",
+    cnpm == "OP057" ~ "PA020",
+    cnpm == "OP065" ~ "PA022",
+    TRUE ~ cnpm),
+    cnpm = if_else(is.na(cnpm), clave_puesto, cnpm)
+  ) %>% 
   left_join(catalogo_puestos, by = "cnpm") %>% 
   mutate(
     puesto_final = denominacion_de_puesto
@@ -367,7 +367,7 @@ write_xlsx(
   "C:/Users/brittany.pereo/Downloads/base_eq_itinerantes.xlsx"
 )
 
-# Base de team quirurgicos ------------------------------------------------
+# Base team qx sin datos carlos -------------------------------------------
 base_final <- base_limpia%>% 
   mutate(
     puesto_arm = case_when(
@@ -424,6 +424,80 @@ writexl::write_xlsx(base_final,
                     "C:/Users/brittany.pereo/Downloads/casos nuevos.xlsx")
 
 val2 <- inner_join(base_final, base_completos)
+
+
+# Base team qx, con datos Carlos ------------------------------------------
+# Base team qx sin datos carlos -------------------------------------------
+base_completos <- readxl::read_xlsx(
+  "C:/Users/brittany.pereo/Downloads/equipo itinerantes 23062026.xlsx"
+) %>% 
+  transmute(ancla_entidad = estado_ancla, cnpm = clave_del_puesto,
+            nombre_cluster = cluster_id, estado_ancla, clues_ancla,
+            nombre_del_ancla, nombre, curp, puesto, clave_del_puesto,
+            estatus_uas, cluster_id, enlace_a_carpeta, casos_nuevos = 0)
+
+base_limpia <- base_limpia %>% 
+  mutate(casos_nuevos = 1)
+
+val <- inner_join(base_completos,base_limpia)
+
+base_completa_final <- rbind(base_completos, base_limpia) 
+val <- inner_join(base_completos,base_completa_final)
+
+base_final <- base_completa_final %>% 
+  mutate(
+    puesto_arm = case_when(
+      clave_del_puesto == "MG001" ~ "Medicina General",
+      clave_del_puesto == "ME001" ~ "Anestesiologia",
+      clave_del_puesto == "ME002" ~ "Cirugia",
+      clave_del_puesto %in% c("EN002", "EN005") ~ "Enfermeria quirurgica",
+      clave_del_puesto %in% c("PA022", "PA020") ~ "Chofer",
+      TRUE ~ NA_character_
+    )
+  ) %>% 
+  filter(!is.na(puesto_arm))
+
+resumen_equipos <- base_final %>% 
+  group_by(estado_ancla, cluster_id) %>% 
+  summarise(
+    anestesiologia = sum(puesto_arm == "Anestesiologia", na.rm = TRUE),
+    cirugia = sum(puesto_arm == "Cirugia", na.rm = TRUE),
+    medicina_general = sum(puesto_arm == "Medicina General", na.rm = TRUE),
+    enfermeria_quirurgica = sum(puesto_arm == "Enfermeria quirurgica", na.rm = TRUE),
+    chofer = sum(puesto_arm == "Chofer", na.rm = TRUE),
+    .groups = "drop"
+  ) %>% 
+  mutate(
+    equipo_itinerante = pmin(
+      anestesiologia,
+      cirugia,
+      medicina_general,
+      enfermeria_quirurgica
+    )
+  ) %>% 
+  select(estado_ancla, cluster_id, equipo_itinerante)
+
+base_final <- base_final %>% 
+  left_join(
+    resumen_equipos,
+    by = c("estado_ancla", "cluster_id")
+  ) %>% 
+  select(ancla_entidad, nombre_cluster, clues_ancla, nombre_del_ancla,
+         cnpm, puesto, curp, nombre, estatus_uas, enlace_a_carpeta,
+         puesto_arm, equipo_itinerante, casos_nuevos)
+
+base_final %>% 
+  distinct(estado_ancla, cluster_id, equipo_itinerante, casos_nuevos) %>% 
+  summarise(total_equipos = sum(equipo_itinerante, na.rm = TRUE))
+
+
+base_final_val <- inner_join(base_final, base_completos) 
+
+writexl::write_xlsx(base_final,
+                    "C:/Users/brittany.pereo/Downloads/casos completos equipos itinerantes.xlsx")
+
+val2 <- inner_join(base_final, base_completos)
+
 
 
 # Resumen de base limpia -----------------------------------------
@@ -516,7 +590,7 @@ resumen_team_qx <- base_limpia_final %>%
     puestos_faltantes
   ) %>% 
   mutate(
-   estado_ancla = str_to_title(estado_ancla)
+    estado_ancla = str_to_title(estado_ancla)
   )
 
 
@@ -627,11 +701,11 @@ base_corregida <- base_corregida %>%
          -puestos_faltantes, -equipo_itinerante_incompleto) %>% 
   mutate(estado_ancla = str_to_title(estado_ancla))
 
-write_xlsx(
-  list(
-    base_limpia = base_corregida,
-    observaciones_eliminadas = observaciones_eliminadas
-  ),
-  "C:/Users/Cecilia Pereo/Downloads/equipo itinerantes completos.xlsx"
-)
+# write_xlsx(
+#   list(
+#     base_limpia = base_corregida,
+#     observaciones_eliminadas = observaciones_eliminadas
+#   ),
+#   "C:/Users/Cecilia Pereo/Downloads/equipo itinerantes completos.xlsx"
+# )
 
