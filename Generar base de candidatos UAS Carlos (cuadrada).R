@@ -204,7 +204,7 @@ team_completos_oficiales <- team_completos %>%
 vector_team_completos <- unique(team_completos_oficiales$clues)
 
 base_anterior_curps <- readxl::read_xlsx(
-"C:/Users/brittany.pereo/Downloads/casos nuevos.xlsx"
+  "C:/Users/brittany.pereo/Downloads/casos nuevos.xlsx"
 ) %>%
   select(curp, nombre) %>%
   filter(!is.na(nombre))
@@ -222,7 +222,7 @@ df <- read_sheet(ss = url,
   clean_names() %>% 
   mutate(across(
     where(is.character) & !matches("link_carpeta"),
-      ~ str_to_upper(str_trim(.x))),
+    ~ str_to_upper(str_trim(.x))),
     link_carpeta = str_trim(link_carpeta))
 #  Base online limpia y priorizada ----------------------------------------
 puestos_validos <- c("PA020", "PA022", "ME001", "ME002", "MG001", "EN005", "EN002")
@@ -233,7 +233,7 @@ base_online <- df %>%
   anti_join( team_completos_oficiales %>% distinct(curp_limpia),
              by = "curp_limpia") %>% 
   filter(str_detect(turno, regex("itinerante", ignore_case = TRUE)) |
-      (fase == 3 & clues %in% vector_ancla_cluster)) %>% 
+           (fase == 3 & clues %in% vector_ancla_cluster)) %>% 
   left_join(catalogo_puestos, by = "cnpm") %>% 
   transmute(estado, clues_ancla = clues, fase, turno, link_carpeta,
             curp, puesto = denominacion_de_puesto, cnpm,
@@ -444,7 +444,7 @@ writexl::write_xlsx(
   "C:/Users/brittany.pereo/Downloads/casos nuevos.xlsx")
 
 val2 <- inner_join(base_final,team_completos,
-  by = intersect(names(base_final), names(team_completos)))
+                   by = intersect(names(base_final), names(team_completos)))
 
 
 
@@ -662,3 +662,50 @@ writexl::write_xlsx(
   ),
   "C:/Users/brittany.pereo/Downloads/base_clusters_uas_validada.xlsx"
 )
+
+
+# ENTIDADES A LAS QUE LES FALTA MAS DEL 75% -------------------------------
+basa_cluster_id <- base_alex_original %>% 
+  clean_names() %>% 
+  st_drop_geometry() %>% 
+  data.table() %>% 
+  mutate(clues_ancla = str_remove(nombre_cluster, "_\\d+$")) %>% 
+  distinct(clues_ancla, nombre_cluster, ancla_entidad,
+           ancla_nombre) %>% 
+  filter(!is.na(clues_ancla))
+
+unique(base_cluster_375_con_uas$cluster_id)
+unique(team_completos$cluster_id)
+
+clusters_completos <- team_completos %>%
+  distinct(cluster_id) %>%
+  rename(nombre_cluster = cluster_id)
+
+resumen_entidad <- universo_clusters %>%
+  left_join(
+    clusters_incompletos %>%
+      mutate(incompleto = TRUE),
+    by = "nombre_cluster"
+  ) %>%
+  left_join(
+    clusters_completos %>%
+      mutate(completo = TRUE),
+    by = "nombre_cluster"
+  ) %>%
+  mutate(
+    incompleto = coalesce(incompleto, FALSE),
+    completo = coalesce(completo, FALSE)
+  ) %>%
+  group_by(ancla_entidad) %>%
+  summarise(
+    clusters_totales = n(),
+    clusters_completos = sum(completo),
+    clusters_incompletos = sum(incompleto),
+    pct_completos = clusters_completos / clusters_totales,
+    pct_incompletos = clusters_incompletos / clusters_totales,
+    .groups = "drop"
+  ) %>%
+  arrange(desc(pct_incompletos))
+
+writexl::write_xlsx(resumen_entidad,
+                    "C:/Users/brittany.pereo/Downloads/resumen_entidad.xlsx")
