@@ -413,7 +413,8 @@ base_final %>%
 
 base_completos <- readxl::read_xlsx(
   "C:/Users/brittany.pereo/Downloads/equipo itinerantes 23062026.xlsx"
-)
+) %>% 
+  mutate(estado_ancla = stringr::str_to_title(estado_ancla))
 
 
 val <- inner_join(base_completos, base_final) 
@@ -427,10 +428,10 @@ val2 <- inner_join(base_final, base_completos)
 
 
 # Base team qx, con datos Carlos ------------------------------------------
-# Base team qx sin datos carlos -------------------------------------------
 base_completos <- readxl::read_xlsx(
   "C:/Users/brittany.pereo/Downloads/equipo itinerantes 23062026.xlsx"
 ) %>% 
+  mutate(estado_ancla = stringr::str_to_title(estado_ancla)) %>% 
   transmute(ancla_entidad = estado_ancla, cnpm = clave_del_puesto,
             nombre_cluster = cluster_id, estado_ancla, clues_ancla,
             nombre_del_ancla, nombre, curp, puesto, clave_del_puesto,
@@ -485,10 +486,6 @@ base_final <- base_final %>%
   select(ancla_entidad, nombre_cluster, clues_ancla, nombre_del_ancla,
          cnpm, puesto, curp, nombre, estatus_uas, enlace_a_carpeta,
          puesto_arm, equipo_itinerante, casos_nuevos)
-
-base_final %>% 
-  distinct(estado_ancla, cluster_id, equipo_itinerante, casos_nuevos) %>% 
-  summarise(total_equipos = sum(equipo_itinerante, na.rm = TRUE))
 
 
 base_final_val <- inner_join(base_final, base_completos) 
