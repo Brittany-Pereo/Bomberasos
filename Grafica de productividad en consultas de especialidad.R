@@ -75,7 +75,17 @@ data_plot <- data_especialidad %>%
   ) %>%
   arrange(fecha)
 
-# GRAFICA -----------------------------------------------------------------
+data_julio <- data_plot %>%
+  filter(lubridate::month(fecha) == 7) %>%
+  mutate(
+    etiqueta = label_number(
+      accuracy = 1,
+      big.mark = ","
+    )(total_de_consultas / 1e3)
+  )
+
+# GRAFICA ------------------------------------------------------------------
+
 grafica_especialidad <- ggplot(
   data_plot,
   aes(
@@ -87,44 +97,63 @@ grafica_especialidad <- ggplot(
 ) +
   geom_line(linewidth = 1.05, alpha = 0.9) +
   geom_point(size = 2.3, alpha = 0.95) +
+  
+  # Línea de tendencia más pegada a los puntos
   geom_smooth(
-    method = "lm",
+    method = "loess",
+    formula = y ~ x,
     se = FALSE,
-    linewidth = 0.8,
+    linewidth = 0.9,
     linetype = "dashed",
+    span = 0.35,
     color = "#2F2F2F"
   ) +
+  
+  # Etiquetas de julio
+  geom_text(
+    data = data_julio,
+    aes(
+      label = etiqueta,
+      y = total_de_consultas / 1e3
+    ),
+    vjust = -1,
+    size = 4,
+    fontface = "bold",
+    show.legend = FALSE
+  ) +
+  
   scale_color_manual(values = c(
     "Con IMSS Bienestar" = "#C8AA73",
     "Sin IMSS Bienestar" = "#6D6D6D"
   )) +
+  
   scale_y_continuous(
     labels = label_number(accuracy = 1, big.mark = ","),
-    name = "Total de consultas (miles)"
+    name = "Total de consultas (miles)",
+    expand = expansion(mult = c(0.08, 0.12))
   ) +
+  
   scale_x_date(
     limits = c(as.Date("2020-01-01"), as.Date("2025-12-31")),
     breaks = seq(
       as.Date("2020-01-01"),
-      as.Date("2025-12-31"),
+      as.Date("2025-01-01"),
       by = "1 year"
     ),
     date_labels = "%Y",
     expand = c(0, 0)
-  )+
+  ) +
+  
   labs(
     title = "Productividad comparada IMSS Bienestar vs No IMSS Bienestar",
     subtitle = "Consultas de especialidad por mes – Con IMSS Bienestar vs. Sin IMSS Bienestar (2020-2026)",
     x = NULL,
     color = NULL
   ) +
+  
   theme_minimal(base_size = 14) +
   theme(
-    plot.title = element_text(
-      face = "bold",
-      size = 17,
-      colour = "#111111"
-    ),
+    plot.title = element_text(face = "bold", size = 17, colour = "#111111"),
     plot.subtitle = element_text(
       face = "bold.italic",
       size = 13,
@@ -137,20 +166,17 @@ grafica_especialidad <- ggplot(
       colour = "#111111",
       margin = margin(r = 10)
     ),
-    axis.text = element_text(
-      size = 10,
-      colour = "#333333"),
+    axis.text = element_text(size = 10, colour = "#333333"),
     panel.grid.minor = element_blank(),
     panel.grid.major.x = element_blank(),
-    panel.grid.major.y = element_line(
-      linewidth = 0.35,
-      colour = "#E5E5E5"),
+    panel.grid.major.y = element_line(linewidth = 0.35, colour = "#E5E5E5"),
     legend.position = "right",
     legend.title = element_blank(),
     legend.text = element_text(size = 11),
-    plot.margin = margin(15, 25, 15, 15))
-grafica_especialidad
+    plot.margin = margin(15, 25, 15, 15)
+  )
 
+grafica_especialidad
 # IMPRESION ---------------------------------------------------------------
 svglite(
   filename = "C:/Users/brittany.pereo/Downloads/grafica_especialidad.svg",
