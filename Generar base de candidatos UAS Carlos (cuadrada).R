@@ -681,6 +681,13 @@ clusters_completos <- team_completos %>%
   distinct(cluster_id) %>%
   rename(nombre_cluster = cluster_id)
 
+clusters_incompletos <- base_cluster_375_con_uas %>%
+  distinct(cluster_id) %>%
+  rename(nombre_cluster = cluster_id)
+
+universo_clusters <- basa_cluster_id %>%
+  distinct(ancla_entidad, nombre_cluster)
+
 resumen_entidad <- universo_clusters %>%
   left_join(
     clusters_incompletos %>%
